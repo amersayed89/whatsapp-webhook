@@ -30,9 +30,16 @@ app.post("/whatsapp", async (req, res) => {
 
     const payload = req.body?.data || req.body;
 
-    const from = payload?.from;
-    const body = payload?.body;
-    const type = payload?.type;
+const from = payload?.from;
+const body = payload?.body;
+const type = payload?.type;
+const fromMe = payload?.fromMe;
+
+// ⛔ تجاهل الرسائل الصادرة من السيرفر (منع التكرار)
+if (fromMe === true) {
+  return res.sendStatus(200);
+}
+
 
     if (!from) {
       return res.sendStatus(200);
