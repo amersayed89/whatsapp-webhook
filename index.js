@@ -1,4 +1,5 @@
 import express from "express";
+import fetch from "node-fetch";
 
 const app = express();
 app.use(express.json());
@@ -10,17 +11,15 @@ const ULTRAMSG_INSTANCE = process.env.ULTRAMSG_INSTANCE;
 
 const ULTRAMSG_BASE = `https://api.ultramsg.com/${ULTRAMSG_INSTANCE}`;
 
-// ================== Send WhatsE
+// ================== Send WhatsApp ==================
 async function sendWhatsAppMessage(to, body) {
   const url = `${ULTRAMSG_BASE}/messages/chat?token=${ULTRAMSG_TOKEN}`;
 
-  const res = await fetch(url, {
+  await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ to, body }),
   });
-
-  return res.json();
 }
 
 // ================== OpenAI ==================
@@ -45,31 +44,29 @@ async function askOpenAI(prompt) {
   });
 
   const data = await res.json();
-  return data?.choices?.[0]?.message?.content || "يرجى اعادة صياغة السؤال.";
+  return data?.choices?.[0]?.message?.content || "ما فهمت عليك، ممكن توضح أكتر؟";
 }
 
 // ================== Subscriber (Placeholder) ==================
 async function getSubscriberByPhone(phone) {
-  // اربطها لاحقا بقاعدة بياناتك
-  return null;
+  return null; // اربطها لاحقاً بقاعدة بياناتك
 }
 
 // ================== Webhook ==================
 app.post("/whatsapp", async (req, res) => {
   try {
-    const data = req.body?.data;
+    const message = req.body;
 
-    if (!data || !data.messages || data.messages.length === 0) {
+    if (!message || !message.from || !message.type) {
       return res.sendStatus(200);
     }
 
-    const message = data.messages[0];
     const from = message.from;
 
-    console.log("Incoming message:", JSON.stringify(message));
+    console.log("Incoming:", message);
 
-    // Voice / Audio
-    if (message.type === "voice" || message.type === "audio") {
+    // Audio
+    if (message.type === "audio") {
       await sendWhatsAppMessage(
         from,
         "تم استلام رسالة صوتية. يرجى ارسال رسالتك كتابة."
@@ -77,11 +74,11 @@ app.post("/whatsapp", async (req, res) => {
       return res.sendStatus(200);
     }
 
-    // Any non-text message
+    // Non-text
     if (message.type !== "chat") {
       await sendWhatsAppMessage(
         from,
-        "تم استلام رسالتك. حاليا يتم دعم الرسائل النصية فقط."
+        "حالياً يتم دعم الرسائل النصية فقط."
       );
       return res.sendStatus(200);
     }
@@ -91,12 +88,10 @@ app.post("/whatsapp", async (req, res) => {
     if (!text) {
       await sendWhatsAppMessage(
         from,
-        "يرجى كتابة رسالة واضحة حتى نتمكن من المساعدة."
+        "يرجى كتابة رسالة واضحة."
       );
       return res.sendStatus(200);
     }
-
-    console.log("Text message:", text);
 
     const subscriber = await getSubscriberByPhone(from);
 
@@ -109,7 +104,7 @@ app.post("/whatsapp", async (req, res) => {
     if (subscriber.status === "due") {
       await sendWhatsAppMessage(
         from,
-        `لديك اشتراك متأخر بقيمة ${subscriber.due_amount}. يرجى التسديد لاعادة تفعيل الخدمة.`
+        `لديك اشتراك متأخر بقيمة ${subscriber.due_amount}.`
       );
       return res.sendStatus(200);
     }
@@ -117,14 +112,12 @@ app.post("/whatsapp", async (req, res) => {
     if (subscriber.status === "expired") {
       await sendWhatsAppMessage(
         from,
-        `اشتراكك منتهي بتاريخ ${subscriber.expiry_date}. يرجى التواصل للتجديد.`
+        `اشتراكك منتهي بتاريخ ${subscriber.expiry_date}.`
       );
       return res.sendStatus(200);
     }
 
-    const aiReply = await askOpenAI(
-      `المشترك اشتراكه فعال. السؤال: ${text}`
-    );
+    const aiReply = await askOpenAI(text);
     await sendWhatsAppMessage(from, aiReply);
 
     res.sendStatus(200);
