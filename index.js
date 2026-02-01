@@ -10,7 +10,7 @@ const ULTRAMSG_INSTANCE = process.env.ULTRAMSG_INSTANCE;
 
 const ULTRAMSG_BASE = `https://api.ultramsg.com/${ULTRAMSG_INSTANCE}`;
 
-// ================== WhatsApp Send ==================
+// ================== SEND WHATSAPP ==================
 async function sendWhatsAppMessage(to, body) {
   const url = `${ULTRAMSG_BASE}/messages/chat?token=${ULTRAMSG_TOKEN}`;
 
@@ -21,11 +21,11 @@ async function sendWhatsAppMessage(to, body) {
   });
 
   const data = await res.json();
-  console.log("ULTRAMSG RESPONSE:", data);
+  console.log("ULTRAMSG:", data);
 }
 
-// ================== OpenAI ==================
-async function askOpenAI(userText) {
+// ================== OPENAI ==================
+async function askOpenAI(text) {
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -34,29 +34,25 @@ async function askOpenAI(userText) {
     },
     body: JSON.stringify({
       model: "gpt-4o-mini",
-      temperature: 0.8,
+      temperature: 0.9,
       messages: [
         {
           role: "system",
           content: `
 أنت موظف دعم إنترنت في لبنان.
-تجاوب باللهجة اللبنانية.
-إعطي حلول واضحة لمشاكل:
-- الإنترنت
-- السرعة
-- الاشتراك
-- الراوتر
-- الواي فاي
-ممنوع تقول "فيك توضح أكتر" إلا إذا الرسالة فعلاً غير مفهومة.
+تجاوب دايمًا باللهجة اللبنانية.
+تعطي حلول مباشرة لأي مشكلة:
+إنترنت، واي فاي، راوتر، سرعة، اشتراك.
+ممنوع تقول "وضح أكتر" إلا إذا الرسالة فعلاً غير مفهومة.
           `,
         },
-        { role: "user", content: userText },
+        { role: "user", content: text },
       ],
     }),
   });
 
   const data = await res.json();
-  return data?.choices?.[0]?.message?.content || "في مشكلة تقنية، جرّب بعد شوي.";
+  return data?.choices?.[0]?.message?.content || "صار في مشكلة تقنية.";
 }
 
 // ================== WEBHOOK ==================
@@ -64,54 +60,61 @@ app.post("/whatsapp", async (req, res) => {
   try {
     console.log("=== WEBHOOK HIT ===");
 
-    const msg = req.body?.data;
+    const payload = req.body;
+    const msg = payload?.data;
+
     if (!msg) {
-      console.log("NO DATA");
+      console.log("NO MESSAGE");
       return res.sendStatus(200);
     }
-
-    console.log("RAW:", JSON.stringify(msg));
 
     // ❌ تجاهل رسائل البوت نفسه
     if (msg.fromMe === true) {
-      console.log("IGNORED: fromMe");
+      console.log("IGNORED fromMe");
       return res.sendStatus(200);
     }
 
-    // ❌ تجاهل غير النص
+    // ❌ تجاهل ACK
+    if (msg.ack && msg.ack !== "") {
+      console.log("IGNORED ACK");
+      return res.sendStatus(200);
+    }
+
+    // ❌ فقط نص
     if (msg.type !== "chat") {
       await sendWhatsAppMessage(
         msg.from,
-        "حالياً بدعم الرسائل النصية فقط 🙏"
+        "حالياً بدعم الرسائل النصية فقط."
       );
       return res.sendStatus(200);
     }
 
     const text = (msg.body || "").trim();
     if (!text) {
-      console.log("EMPTY MESSAGE");
+      console.log("EMPTY TEXT");
       return res.sendStatus(200);
     }
 
     console.log("FROM:", msg.from);
     console.log("TEXT:", text);
 
+    // ✅ كل شي يروح عالذكاء
     const aiReply = await askOpenAI(text);
 
-    console.log("AI REPLY:", aiReply);
+    console.log("AI:", aiReply);
 
     await sendWhatsAppMessage(msg.from, aiReply);
 
     return res.sendStatus(200);
   } catch (err) {
-    console.error("WEBHOOK ERROR:", err);
+    console.error("ERROR:", err);
     return res.sendStatus(200);
   }
 });
 
 // ================== HEALTH ==================
 app.get("/", (req, res) => {
-  res.send("WhatsApp AI Bot is running");
+  res.send("WhatsApp AI Bot Running");
 });
 
 // ================== START ==================
