@@ -25,7 +25,7 @@ async function sendWhatsAppMessage(to, body) {
 }
 
 // ================== OPENAI ==================
-async function askOpenAI(text) {
+async function askOpenAI(userText) {
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -34,26 +34,45 @@ async function askOpenAI(text) {
     },
     body: JSON.stringify({
       model: "gpt-4o-mini",
-      temperature: 0.9,
+      temperature: 0.8,
       messages: [
         {
           role: "system",
           content: `
-أنت موظف دعم إنترنت في لبنان.
-تجاوب دايمًا باللهجة اللبنانية.
-تعطي حلول مباشرة لأي مشكلة:
-إنترنت، واي فاي، راوتر، سرعة، اشتراك.
-ممنوع تقول "وضح أكتر" إلا إذا الرسالة فعلاً غير مفهومة.
+أنت موظف دعم فني لشركة إنترنت في لبنان.
+
+مهمتك:
+- تفهم السؤال مباشرة
+- تجاوب باللهجة اللبنانية
+- تعطي حلول عملية وواضحة
+- إذا المستخدم قال "الانترنت مقطوع" → أعطي خطوات فحص
+- إذا قال "الواي فاي ضعيف" → حلول واي فاي
+- إذا قال "ما عم يفتح" → اسأل عن لمبة الراوتر أو السرعة
+
+ممنوع تعطي جواب عام.
+ممنوع تقول "صار في مشكلة تقنية".
+ممنوع تقول "وضح أكتر" إلا إذا الرسالة غير مفهومة حرفيًا.
           `,
         },
-        { role: "user", content: text },
+        {
+          role: "user",
+          content: userText,
+        },
       ],
     }),
   });
 
   const data = await res.json();
-  return data?.choices?.[0]?.message?.content || "صار في مشكلة تقنية.";
+
+  const reply = data?.choices?.[0]?.message?.content;
+
+  if (!reply || reply.length < 5) {
+    return "جرب تطفّي الراوتر دقيقة وترجّع تشغّلو، وقلي شو بيصير.";
+  }
+
+  return reply;
 }
+
 
 // ================== WEBHOOK ==================
 app.post("/whatsapp", async (req, res) => {
