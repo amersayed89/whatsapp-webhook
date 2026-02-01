@@ -28,15 +28,18 @@ app.post("/whatsapp", async (req, res) => {
   try {
     console.log("RAW BODY:", JSON.stringify(req.body, null, 2));
 
-    const payload = req.body?.data || req.body;
+const payload = req.body?.data || req.body;
 
 const from = payload?.from;
 const body = payload?.body;
 const type = payload?.type;
-const fromMe = payload?.fromMe;
+const fromMe =
+  payload?.fromMe === true ||
+  payload?.isSent === true ||
+  payload?.ack === 1;
 
-// ⛔ تجاهل الرسائل الصادرة من السيرفر (منع التكرار)
-if (fromMe === true) {
+// ⛔ تجاهل أي رسالة طالعة من عندنا (منع loop)
+if (fromMe) {
   return res.sendStatus(200);
 }
 
