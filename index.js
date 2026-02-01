@@ -65,28 +65,29 @@ async function askOpenAI(prompt) {
 app.post("/whatsapp", async (req, res) => {
   try {
     console.log("=== WEBHOOK HIT ===");
+    console.log("RAW BODY:", JSON.stringify(req.body));
 
-    const data = req.body?.data;
-    if (!data || !data.messages || data.messages.length === 0) {
-      console.log("NO MESSAGES");
+    const message = req.body?.data;
+
+    if (!message) {
+      console.log("NO MESSAGE OBJECT");
       return res.sendStatus(200);
     }
 
-    const message = data.messages[0];
-    console.log("MESSAGE:", message);
-
-    // منع loop (رسائل طالعة من نفس الرقم)
     if (message.fromMe === true) {
       console.log("IGNORED: fromMe");
       return res.sendStatus(200);
     }
 
     const from = message.from;
-    console.log("FROM:", from);
-    console.log("TYPE:", message.type);
+    const type = message.type;
+    const text = (message.body || "").trim();
 
-    // صوت / ميديا
-    if (message.type === "voice" || message.type === "audio") {
+    console.log("FROM:", from);
+    console.log("TYPE:", type);
+    console.log("TEXT:", text);
+
+    if (type === "voice" || type === "audio") {
       await sendWhatsAppMessage(
         from,
         "وصلتني رسالة صوتية. فيك تبعتلي رسالتك كتابة؟"
@@ -94,8 +95,7 @@ app.post("/whatsapp", async (req, res) => {
       return res.sendStatus(200);
     }
 
-    // غير نص
-    if (message.type !== "chat") {
+    if (type !== "chat") {
       await sendWhatsAppMessage(
         from,
         "حالياً بدعم الرسائل النصية فقط."
@@ -103,11 +103,7 @@ app.post("/whatsapp", async (req, res) => {
       return res.sendStatus(200);
     }
 
-    const text = (message.body || "").trim();
-    console.log("TEXT:", text);
-
     if (!text) {
-      console.log("EMPTY TEXT");
       return res.sendStatus(200);
     }
 
@@ -115,7 +111,6 @@ app.post("/whatsapp", async (req, res) => {
     const reply = await askOpenAI(text);
     console.log("AI REPLY:", reply);
 
-    console.log("SENDING REPLY TO WHATSAPP");
     await sendWhatsAppMessage(from, reply);
     console.log("MESSAGE SENT");
 
@@ -124,15 +119,4 @@ app.post("/whatsapp", async (req, res) => {
     console.error("WEBHOOK ERROR:", err);
     res.sendStatus(500);
   }
-});
-
-// ================== Health ==================
-app.get("/", (req, res) => {
-  res.send("Webhook is running");
-});
-
-// ================== Start ==================
-const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => {
-  console.log("Server running on port", PORT);
 });
