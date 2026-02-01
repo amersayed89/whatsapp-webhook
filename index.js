@@ -3,19 +3,24 @@ import express from "express";
 const app = express();
 app.use(express.json());
 
-// ================= ENV =================
+// ================== ENV ==================
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const ULTRAMSG_TOKEN = process.env.ULTRAMSG_TOKEN;
 const ULTRAMSG_INSTANCE = process.env.ULTRAMSG_INSTANCE;
 
+if (!OPENAI_API_KEY || !ULTRAMSG_TOKEN || !ULTRAMSG_INSTANCE) {
+  console.error("Missing environment variables");
+}
+
 const ULTRAMSG_BASE = `https://api.ultramsg.com/${ULTRAMSG_INSTANCE}`;
 
-// ================= WhatsApp Send =================
+// ================== WhatsApp Send ==================
 async function sendWhatsAppMessage(to, body) {
   const url = `${ULTRAMSG_BASE}/messages/chat?token=${ULTRAMSG_TOKEN}`;
 
-  console.log("SENDING WHATSAPP MESSAGE TO:", to);
-  console.log("MESSAGE BODY:", body);
+  console.log("SENDING WHATSAPP MESSAGE");
+  console.log("TO:", to);
+  console.log("BODY:", body);
 
   const res = await fetch(url, {
     method: "POST",
@@ -24,63 +29,44 @@ async function sendWhatsAppMessage(to, body) {
   });
 
   const data = await res.json();
-
   console.log("ULTRAMSG RESPONSE:", data);
 
   return data;
 }
 
-// ================= OpenAI =================
-async function askAI(userText) {
+// ================== OpenAI ==================
+async function askOpenAI(prompt) {
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${OPENAI_API_KEY}`
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
     },
     body: JSON.stringify({
       model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
-          content: `
-أنت موظف دعم فني إنترنت لبناني.
-تفهم أي سؤال عن:
-- قطع الإنترنت
-- بطء السرعة
-- الراوتر
-- الاشتراكات
-- الدفع
-- الشبكات
-
-ردودك:
-- قصيرة
-- واضحة
-- باللهجة اللبنانية
-- بدون فلسفة
-`
+          content:
+            "انت مساعد واتساب لبناني مختص بالانترنت. ردودك واضحة، قصيرة، وبلهجة لبنانية محترمة.",
         },
-        {
-          role: "user",
-          content: userText
-        }
+        { role: "user", content: prompt },
       ],
-      temperature: 0.7
-    })
+    }),
   });
 
   const data = await res.json();
-  return data.choices?.[0]?.message?.content || "كيف فيني ساعدك؟";
+  const reply = data?.choices?.[0]?.message?.content;
+
+  return reply || "ما فهمت عليك، فيك توضّح أكتر؟";
 }
 
-// ================= Webhook =================
+// ================== Webhook ==================
 app.post("/whatsapp", async (req, res) => {
   try {
     console.log("=== WEBHOOK HIT ===");
 
     const data = req.body?.data;
-    console.log("DATA:", JSON.stringify(data));
-
     if (!data || !data.messages || data.messages.length === 0) {
       console.log("NO MESSAGES");
       return res.sendStatus(200);
@@ -89,17 +75,29 @@ app.post("/whatsapp", async (req, res) => {
     const message = data.messages[0];
     console.log("MESSAGE:", message);
 
+    // منع loop (رسائل طالعة من نفس الرقم)
     if (message.fromMe === true) {
       console.log("IGNORED: fromMe");
       return res.sendStatus(200);
     }
 
+    const from = message.from;
+    console.log("FROM:", from);
     console.log("TYPE:", message.type);
 
-    if (message.type !== "chat") {
-      console.log("IGNORED: not chat");
+    // صوت / ميديا
+    if (message.type === "voice" || message.type === "audio") {
       await sendWhatsAppMessage(
-        message.from,
+        from,
+        "وصلتني رسالة صوتية. فيك تبعتلي رسالتك كتابة؟"
+      );
+      return res.sendStatus(200);
+    }
+
+    // غير نص
+    if (message.type !== "chat") {
+      await sendWhatsAppMessage(
+        from,
         "حالياً بدعم الرسائل النصية فقط."
       );
       return res.sendStatus(200);
@@ -114,19 +112,27 @@ app.post("/whatsapp", async (req, res) => {
     }
 
     console.log("SENDING TO OPENAI");
-
     const reply = await askOpenAI(text);
-
     console.log("AI REPLY:", reply);
 
-    await sendWhatsAppMessage(message.from, reply);
-
+    console.log("SENDING REPLY TO WHATSAPP");
+    await sendWhatsAppMessage(from, reply);
     console.log("MESSAGE SENT");
 
     res.sendStatus(200);
   } catch (err) {
-    console.error("ERROR:", err);
+    console.error("WEBHOOK ERROR:", err);
     res.sendStatus(500);
   }
 });
 
+// ================== Health ==================
+app.get("/", (req, res) => {
+  res.send("Webhook is running");
+});
+
+// ================== Start ==================
+const PORT = process.env.PORT || 8080;
+app.listen(PORT, () => {
+  console.log("Server running on port", PORT);
+});
