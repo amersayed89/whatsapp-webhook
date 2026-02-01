@@ -67,49 +67,57 @@ async function askAI(userText) {
 // ================= Webhook =================
 app.post("/whatsapp", async (req, res) => {
   try {
+    console.log("=== WEBHOOK HIT ===");
+
     const data = req.body?.data;
-    if (!data?.messages?.length) return res.sendStatus(200);
+    console.log("DATA:", JSON.stringify(data));
 
-    const msg = data.messages[0];
-    const from = msg.from;
-    const text = (msg.body || "").trim();
-
-    console.log("INCOMING:", text);
-
-    // صوت
-    if (msg.type === "voice" || msg.type === "audio") {
-      await sendWhatsAppMessage(from, "فيك تبعتلي رسالتك كتابة؟");
+    if (!data || !data.messages || data.messages.length === 0) {
+      console.log("NO MESSAGES");
       return res.sendStatus(200);
     }
 
-    // غير نص
-    if (msg.type !== "chat") {
-      await sendWhatsAppMessage(from, "حالياً بدعم الرسائل النصية بس.");
+    const message = data.messages[0];
+    console.log("MESSAGE:", message);
+
+    if (message.fromMe === true) {
+      console.log("IGNORED: fromMe");
       return res.sendStatus(200);
     }
+
+    console.log("TYPE:", message.type);
+
+    if (message.type !== "chat") {
+      console.log("IGNORED: not chat");
+      await sendWhatsAppMessage(
+        message.from,
+        "حالياً بدعم الرسائل النصية فقط."
+      );
+      return res.sendStatus(200);
+    }
+
+    const text = (message.body || "").trim();
+    console.log("TEXT:", text);
 
     if (!text) {
-      await sendWhatsAppMessage(from, "اكتبلي شو المشكلة بالتحديد.");
+      console.log("EMPTY TEXT");
       return res.sendStatus(200);
     }
 
-    const reply = await askAI(text);
-    await sendWhatsAppMessage(from, reply);
+    console.log("SENDING TO OPENAI");
+
+    const reply = await askOpenAI(text);
+
+    console.log("AI REPLY:", reply);
+
+    await sendWhatsAppMessage(message.from, reply);
+
+    console.log("MESSAGE SENT");
 
     res.sendStatus(200);
   } catch (err) {
     console.error("ERROR:", err);
-    res.sendStatus(200);
+    res.sendStatus(500);
   }
 });
 
-// ================= Health =================
-app.get("/", (req, res) => {
-  res.send("WhatsApp AI Bot Running");
-});
-
-// ================= Start =================
-const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => {
-  console.log("Server running on port", PORT);
-});
