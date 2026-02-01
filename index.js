@@ -13,7 +13,6 @@ const ULTRAMSG_BASE = `https://api.ultramsg.com/${ULTRAMSG_INSTANCE}`;
 // ================== Send WhatsApp ==================
 async function sendWhatsAppMessage(to, body) {
   const url = `${ULTRAMSG_BASE}/messages/chat?token=${ULTRAMSG_TOKEN}`;
-
   await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -22,7 +21,7 @@ async function sendWhatsAppMessage(to, body) {
 }
 
 // ================== OpenAI ==================
-async function askOpenAI(userText) {
+async function askOpenAI(text) {
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -36,13 +35,13 @@ async function askOpenAI(userText) {
           role: "system",
           content: `
 انت موظف دعم فني لشركة إنترنت.
-تفهم كل ما يتعلق بالإنترنت: السرعات، البطء، الانقطاع، الراوتر، الواي فاي، الاشتراكات.
+تفهم مشاكل الانترنت، السرعات، البطء، الانقطاع، الراوتر والواي فاي.
 جاوب بلهجة لبنانية مهذبة وبطريقة بسيطة.
-إذا السؤال مش واضح اطلب توضيح.
-إذا السؤال خارج مجال الإنترنت اعتذر بلطف.
-`
+إذا السؤال غير واضح اطلب توضيح.
+إذا خارج مجال الانترنت اعتذر بلطف.
+`,
         },
-        { role: "user", content: userText }
+        { role: "user", content: text },
       ],
     }),
   });
@@ -54,48 +53,72 @@ async function askOpenAI(userText) {
   );
 }
 
+// ================== UTIL: extract text anywhere ==================
+function extractTextDeep(obj) {
+  if (!obj) return "";
+  // لو string مباشرة
+  if (typeof obj === "string" && obj.trim()) return obj;
+
+  // لو Array
+  if (Array.isArray(obj)) {
+    for (const item of obj) {
+      const found = extractTextDeep(item);
+      if (found) return found;
+    }
+  }
+
+  // لو Object
+  if (typeof obj === "object") {
+    // أسماء شائعة للنص
+    const keysPriority = ["body", "text", "message", "caption"];
+    for (const k of keysPriority) {
+      if (typeof obj[k] === "string" && obj[k].trim()) return obj[k];
+    }
+    // فتّش بكل القيم
+    for (const k of Object.keys(obj)) {
+      const found = extractTextDeep(obj[k]);
+      if (found) return found;
+    }
+  }
+  return "";
+}
+
 // ================== Webhook ==================
 app.post("/whatsapp", async (req, res) => {
   try {
-    // UltraMsg يبعث payload بأشكال مختلفة
-    const payload = req.body?.data || req.body;
+    // بعض الحسابات تبعث data/messages، وبعضها مباشرة
+    const root = req.body?.data ?? req.body;
 
-    const from = payload?.from;
-
-    // 🟢 الحل الأساسي: جلب النص من كل الاحتمالات
-    let body = "";
-
-for (const key in payload) {
-  if (
-    typeof payload[key] === "string" &&
-    payload[key].trim().length > 0
-  ) {
-    body = payload[key];
-    break;
-  }
-}
-
-
-    const type = payload?.type;
-
-    // منع loop (الرسائل الصادرة من عندنا)
+    // منع loop (رسائل صادرة)
     const fromMe =
-      payload?.fromMe === true ||
-      payload?.isSent === true ||
-      payload?.ack === 1;
+      root?.fromMe === true ||
+      root?.isSent === true ||
+      root?.ack === 1;
 
-    if (fromMe) {
-      return res.sendStatus(200);
-    }
+    if (fromMe) return res.sendStatus(200);
 
-    if (!from) {
-      return res.sendStatus(200);
-    }
+    // رقم المرسل
+    const from =
+      root?.from ||
+      root?.sender ||
+      root?.chatId ||
+      root?.data?.from;
 
-    console.log("RAW PAYLOAD:", JSON.stringify(payload, null, 2));
-    console.log("USER TEXT:", body);
+    if (!from) return res.sendStatus(200);
 
-    // 🎤 رسالة صوتية
+    // نوع الرسالة (إن وُجد)
+    const type =
+      root?.type ||
+      root?.data?.type ||
+      root?.messages?.[0]?.type;
+
+    // استخراج النص من أي مكان
+    const text = extractTextDeep(root);
+
+    console.log("RAW:", JSON.stringify(req.body, null, 2));
+    console.log("EXTRACTED TEXT:", text);
+
+    // صوت
     if (type === "audio" || type === "voice") {
       await sendWhatsAppMessage(
         from,
@@ -104,8 +127,8 @@ for (const key in payload) {
       return res.sendStatus(200);
     }
 
-    // ❌ غير نص
-    if (type && type !== "chat") {
+    // غير نص (صورة/ملف)
+    if (type && type !== "chat" && !text) {
       await sendWhatsAppMessage(
         from,
         "حاليًا بخدمك بالرسائل النصية فقط."
@@ -113,8 +136,8 @@ for (const key in payload) {
       return res.sendStatus(200);
     }
 
-    // ✍️ نص فاضي
-    if (!body || !body.trim()) {
+    // نص فاضي
+    if (!text || !text.trim()) {
       await sendWhatsAppMessage(
         from,
         "فيك تكتب سؤالك شوي أوضح؟"
@@ -122,13 +145,13 @@ for (const key in payload) {
       return res.sendStatus(200);
     }
 
-    // 🤖 ذكاء اصطناعي (حر)
-    const aiReply = await askOpenAI(body);
+    // 🤖 ذكاء اصطناعي
+    const aiReply = await askOpenAI(text);
     await sendWhatsAppMessage(from, aiReply);
 
     res.sendStatus(200);
-  } catch (err) {
-    console.error("Webhook error:", err);
+  } catch (e) {
+    console.error("ERR:", e);
     res.sendStatus(200);
   }
 });
