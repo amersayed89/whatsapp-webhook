@@ -25,7 +25,7 @@ async function sendWhatsAppMessage(to, body) {
 }
 
 // ========== OpenAI ==========
-async function askOpenAI(question) {
+async function askOpenAI(userText) {
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -34,23 +34,39 @@ async function askOpenAI(question) {
     },
     body: JSON.stringify({
       model: "gpt-4o-mini",
+      temperature: 0.7,
       messages: [
         {
           role: "system",
-          content:
-            "انت مساعد دعم فني لمزود إنترنت لبناني. تجاوب بلهجة لبنانية واضحة، عملية، ومفيدة.",
+          content: `
+انت مساعد دعم تقني لشركة انترنت في لبنان.
+ممنوع تقول "فيك توضح اكتر" او "ما فهمت".
+اذا الرسالة قصيرة، افترض انها مشكلة انترنت ورد بحل منطقي.
+
+اعطِ اقتراحات مباشرة مثل:
+- فحص الراوتر
+- اعادة تشغيل
+- سؤال عن وقت المشكلة
+- سؤال عن اللمبات
+
+احكي بلهجة لبنانية محترمة، مختصرة، ومفيدة.
+`
         },
         {
           role: "user",
-          content: question,
-        },
+          content: userText
+        }
       ],
     }),
   });
 
   const data = await res.json();
-  return data?.choices?.[0]?.message?.content || "فيك توضّح المشكلة أكتر؟";
+  return (
+    data?.choices?.[0]?.message?.content ||
+    "في مشكلة تقنية حالياً، جرّب بعد شوي."
+  );
 }
+
 
 // ========== WEBHOOK ==========
 app.post("/whatsapp", async (req, res) => {
