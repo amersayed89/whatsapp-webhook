@@ -63,6 +63,39 @@ app.post("/whatsapp", async (req, res) => {
 
     const from = message.from;
     const text = (message.body || "").trim();
+    // ====== FIX: ردود مباشرة لمشاكل واضحة ======
+const lower = text.toLowerCase();
+
+if (
+  lower.includes("بطئ") ||
+  lower.includes("بطيء") ||
+  lower.includes("ضعيف") ||
+  lower.includes("مقطوع") ||
+  lower.includes("ما في") ||
+  lower.includes("مافي") ||
+  lower.includes("انترنت") ||
+  lower.includes("نت")
+) {
+  await sendWhatsAppMessage(
+    from,
+    "تمام، المشكلة وصلت. فيك تقلي من أي ساعة بلشت؟ وهل اللمبة بالراوتر شغالة؟"
+  );
+  return res.sendStatus(200);
+}
+
+if (
+  lower === "شو بعمل" ||
+  lower === "كيف" ||
+  lower === "؟" ||
+  lower === "فيك توضح"
+) {
+  await sendWhatsAppMessage(
+    from,
+    "خبرني أكتر عن المشكلة: بطء، انقطاع، أو ما في اتصال نهائي؟"
+  );
+  return res.sendStatus(200);
+}
+
 
     console.log("TEXT:", text);
 
