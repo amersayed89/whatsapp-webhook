@@ -36,7 +36,7 @@ async function askOpenAI(userText) {
           role: "system",
           content: `
 انت موظف دعم فني لشركة إنترنت.
-تفهم كل ما يتعلق بالإنترنت، السرعات، البطء، الانقطاع، الراوتر، الواي فاي، الاشتراكات.
+تفهم كل ما يتعلق بالإنترنت: السرعات، البطء، الانقطاع، الراوتر، الواي فاي، الاشتراكات.
 جاوب بلهجة لبنانية مهذبة وبطريقة بسيطة.
 إذا السؤال مش واضح اطلب توضيح.
 إذا السؤال خارج مجال الإنترنت اعتذر بلطف.
@@ -57,25 +57,27 @@ async function askOpenAI(userText) {
 // ================== Webhook ==================
 app.post("/whatsapp", async (req, res) => {
   try {
+    // UltraMsg يبعث payload بأشكال مختلفة
     const payload = req.body?.data || req.body;
 
-const from = payload?.from;
-const body =
-  payload?.body ||
-  payload?.text ||
-  payload?.message ||
-  payload?.caption ||
-  "";
+    const from = payload?.from;
 
-const type = payload?.type;
+    // 🟢 الحل الأساسي: جلب النص من كل الاحتمالات
+    const body =
+      payload?.body ||
+      payload?.text ||
+      payload?.message ||
+      payload?.caption ||
+      "";
 
+    const type = payload?.type;
 
+    // منع loop (الرسائل الصادرة من عندنا)
     const fromMe =
       payload?.fromMe === true ||
       payload?.isSent === true ||
       payload?.ack === 1;
 
-    // ⛔ تجاهل الرسائل الصادرة من عندنا (منع التكرار)
     if (fromMe) {
       return res.sendStatus(200);
     }
@@ -84,7 +86,10 @@ const type = payload?.type;
       return res.sendStatus(200);
     }
 
-    // 🎤 صوت
+    console.log("RAW PAYLOAD:", JSON.stringify(payload, null, 2));
+    console.log("USER TEXT:", body);
+
+    // 🎤 رسالة صوتية
     if (type === "audio" || type === "voice") {
       await sendWhatsAppMessage(
         from,
@@ -94,7 +99,7 @@ const type = payload?.type;
     }
 
     // ❌ غير نص
-    if (type !== "chat") {
+    if (type && type !== "chat") {
       await sendWhatsAppMessage(
         from,
         "حاليًا بخدمك بالرسائل النصية فقط."
