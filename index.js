@@ -63,12 +63,18 @@ app.post("/whatsapp", async (req, res) => {
     const from = payload?.from;
 
     // 🟢 الحل الأساسي: جلب النص من كل الاحتمالات
-    const body =
-      payload?.body ||
-      payload?.text ||
-      payload?.message ||
-      payload?.caption ||
-      "";
+    let body = "";
+
+for (const key in payload) {
+  if (
+    typeof payload[key] === "string" &&
+    payload[key].trim().length > 0
+  ) {
+    body = payload[key];
+    break;
+  }
+}
+
 
     const type = payload?.type;
 
