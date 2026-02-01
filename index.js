@@ -111,6 +111,27 @@ app.post("/whatsapp", async (req, res) => {
     }
 
     console.log("SENDING TO OPENAI");
+    // رسائل عامة أو غامضة
+const genericMessages = [
+  "مرحبا",
+  "أهلا",
+  "شو",
+  "شو في",
+  "نعم",
+  "فيك توضح",
+  "وضح",
+  "كيف",
+  "?"
+];
+
+if (text.length < 5 || genericMessages.includes(text)) {
+  await sendWhatsAppMessage(
+    from,
+    "أكيد 👍\nخبرني شو المشكلة بالضبط؟ بطء؟ انقطاع؟ اشتراك؟"
+  );
+  return res.sendStatus(200);
+}
+
     const reply = await askOpenAI(text);
     console.log("AI REPLY:", reply);
 
