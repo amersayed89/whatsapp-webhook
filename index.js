@@ -14,11 +14,20 @@ const ULTRAMSG_BASE = `https://api.ultramsg.com/${ULTRAMSG_INSTANCE}`;
 async function sendWhatsAppMessage(to, body) {
   const url = `${ULTRAMSG_BASE}/messages/chat?token=${ULTRAMSG_TOKEN}`;
 
-  await fetch(url, {
+  console.log("SENDING WHATSAPP MESSAGE TO:", to);
+  console.log("MESSAGE BODY:", body);
+
+  const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ to, body })
+    body: JSON.stringify({ to, body }),
   });
+
+  const data = await res.json();
+
+  console.log("ULTRAMSG RESPONSE:", data);
+
+  return data;
 }
 
 // ================= OpenAI =================
