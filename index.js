@@ -60,7 +60,13 @@ app.post("/whatsapp", async (req, res) => {
     const payload = req.body?.data || req.body;
 
     const from = payload?.from;
-    const body = payload?.body;
+    const body =
+  payload?.body ||
+  payload?.text ||
+  payload?.message ||
+  payload?.caption ||
+  "";
+
     const type = payload?.type;
 
     const fromMe =
