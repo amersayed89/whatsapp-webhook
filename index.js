@@ -55,7 +55,7 @@ async function getSubscriberByPhone(phone) {
 }
 
 // ================== Webhook ==================
-app.post("/", async (req, res) => {
+app.post("/whatsapp", async (req, res) => {
   try {
     const data = req.body?.data;
 
