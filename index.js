@@ -8,39 +8,40 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const ULTRAMSG_TOKEN = process.env.ULTRAMSG_TOKEN;
 const ULTRAMSG_INSTANCE = process.env.ULTRAMSG_INSTANCE;
 
-if (!OPENAI_API_KEY || !ULTRAMSG_TOKEN || !ULTRAMSG_INSTANCE) {
-  console.error("Missing environment variables");
-}
-
 const ULTRAMSG_BASE = `https://api.ultramsg.com/${ULTRAMSG_INSTANCE}`;
 
-// ================== WhatsApp Send ==================
+if (!OPENAI_API_KEY || !ULTRAMSG_TOKEN || !ULTRAMSG_INSTANCE) {
+  console.error("Missing ENV variables");
+}
+
+// ================== Send WhatsApp ==================
 async function sendWhatsAppMessage(to, body) {
   const url = `${ULTRAMSG_BASE}/messages/chat?token=${ULTRAMSG_TOKEN}`;
 
-  console.log("SENDING WHATSAPP MESSAGE");
-  console.log("TO:", to);
+  console.log("SENDING MESSAGE TO:", to);
   console.log("BODY:", body);
 
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ to, body }),
+    body: JSON.stringify({
+      to,
+      body
+    })
   });
 
   const data = await res.json();
   console.log("ULTRAMSG RESPONSE:", data);
-
   return data;
 }
 
 // ================== OpenAI ==================
-async function askOpenAI(prompt) {
+async function askOpenAI(text) {
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
+      Authorization: `Bearer ${OPENAI_API_KEY}`
     },
     body: JSON.stringify({
       model: "gpt-4o-mini",
@@ -48,17 +49,15 @@ async function askOpenAI(prompt) {
         {
           role: "system",
           content:
-            "انت مساعد واتساب لبناني مختص بالانترنت. ردودك واضحة، قصيرة، وبلهجة لبنانية محترمة.",
+            "انت مساعد واتساب لبناني مختص بكل شي له علاقة بالانترنت، الشبكات، البطء، الاشتراكات. ردودك قصيرة وواضحة."
         },
-        { role: "user", content: prompt },
-      ],
-    }),
+        { role: "user", content: text }
+      ]
+    })
   });
 
   const data = await res.json();
-  const reply = data?.choices?.[0]?.message?.content;
-
-  return reply || "ما فهمت عليك، فيك توضّح أكتر؟";
+  return data?.choices?.[0]?.message?.content || "ما فهمت عليك، فيك توضّح أكتر؟";
 }
 
 // ================== Webhook ==================
@@ -67,15 +66,17 @@ app.post("/whatsapp", async (req, res) => {
     console.log("=== WEBHOOK HIT ===");
     console.log("RAW BODY:", JSON.stringify(req.body));
 
+    // UltraMsg message structure
     const message = req.body?.data;
 
     if (!message) {
-      console.log("NO MESSAGE OBJECT");
+      console.log("NO MESSAGE");
       return res.sendStatus(200);
     }
 
+    // منع loop
     if (message.fromMe === true) {
-      console.log("IGNORED: fromMe");
+      console.log("IGNORED fromMe");
       return res.sendStatus(200);
     }
 
@@ -87,14 +88,16 @@ app.post("/whatsapp", async (req, res) => {
     console.log("TYPE:", type);
     console.log("TEXT:", text);
 
+    // صوت
     if (type === "voice" || type === "audio") {
       await sendWhatsAppMessage(
         from,
-        "وصلتني رسالة صوتية. فيك تبعتلي رسالتك كتابة؟"
+        "وصلتني رسالة صوتية، فيك تبعتلي رسالتك كتابة؟"
       );
       return res.sendStatus(200);
     }
 
+    // غير نص
     if (type !== "chat") {
       await sendWhatsAppMessage(
         from,
@@ -116,7 +119,18 @@ app.post("/whatsapp", async (req, res) => {
 
     res.sendStatus(200);
   } catch (err) {
-    console.error("WEBHOOK ERROR:", err);
+    console.error("ERROR:", err);
     res.sendStatus(500);
   }
+});
+
+// ================== Health ==================
+app.get("/", (req, res) => {
+  res.send("Webhook is running");
+});
+
+// ================== Start ==================
+const PORT = process.env.PORT || 8080;
+app.listen(PORT, () => {
+  console.log("Server running on port", PORT);
 });
