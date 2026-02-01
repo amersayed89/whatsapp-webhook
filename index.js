@@ -1,17 +1,16 @@
 import express from "express";
-import fetch from "node-fetch";
 
 const app = express();
 app.use(express.json());
 
-// ========== ENV ==========
+// ================== ENV ==================
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const ULTRAMSG_TOKEN = process.env.ULTRAMSG_TOKEN;
 const ULTRAMSG_INSTANCE = process.env.ULTRAMSG_INSTANCE;
 
 const ULTRAMSG_BASE = `https://api.ultramsg.com/${ULTRAMSG_INSTANCE}`;
 
-// ========== WhatsApp Send ==========
+// ================== WhatsApp Send ==================
 async function sendWhatsAppMessage(to, body) {
   const url = `${ULTRAMSG_BASE}/messages/chat?token=${ULTRAMSG_TOKEN}`;
 
@@ -21,10 +20,11 @@ async function sendWhatsAppMessage(to, body) {
     body: JSON.stringify({ to, body }),
   });
 
-  return res.json();
+  const data = await res.json();
+  console.log("ULTRAMSG RESPONSE:", data);
 }
 
-// ========== OpenAI ==========
+// ================== OpenAI ==================
 async function askOpenAI(userText) {
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -34,127 +34,87 @@ async function askOpenAI(userText) {
     },
     body: JSON.stringify({
       model: "gpt-4o-mini",
-      temperature: 0.7,
+      temperature: 0.8,
       messages: [
         {
           role: "system",
           content: `
-انت مساعد دعم تقني لشركة انترنت في لبنان.
-ممنوع تقول "فيك توضح اكتر" او "ما فهمت".
-اذا الرسالة قصيرة، افترض انها مشكلة انترنت ورد بحل منطقي.
-
-اعطِ اقتراحات مباشرة مثل:
-- فحص الراوتر
-- اعادة تشغيل
-- سؤال عن وقت المشكلة
-- سؤال عن اللمبات
-
-احكي بلهجة لبنانية محترمة، مختصرة، ومفيدة.
-`
+أنت موظف دعم إنترنت في لبنان.
+تجاوب باللهجة اللبنانية.
+إعطي حلول واضحة لمشاكل:
+- الإنترنت
+- السرعة
+- الاشتراك
+- الراوتر
+- الواي فاي
+ممنوع تقول "فيك توضح أكتر" إلا إذا الرسالة فعلاً غير مفهومة.
+          `,
         },
-        {
-          role: "user",
-          content: userText
-        }
+        { role: "user", content: userText },
       ],
     }),
   });
 
   const data = await res.json();
-  return (
-    data?.choices?.[0]?.message?.content ||
-    "في مشكلة تقنية حالياً، جرّب بعد شوي."
-  );
+  return data?.choices?.[0]?.message?.content || "في مشكلة تقنية، جرّب بعد شوي.";
 }
 
-
-// ========== WEBHOOK ==========
+// ================== WEBHOOK ==================
 app.post("/whatsapp", async (req, res) => {
   try {
-    const message = req.body?.data;
+    console.log("=== WEBHOOK HIT ===");
 
-    if (!message || message.self === true) {
+    const msg = req.body?.data;
+    if (!msg) {
+      console.log("NO DATA");
       return res.sendStatus(200);
     }
 
-    const from = message.from;
-    const text = (message.body || "").trim();
-    // ====== FIX: ردود مباشرة لمشاكل واضحة ======
-const lower = text.toLowerCase();
+    console.log("RAW:", JSON.stringify(msg));
 
-if (
-  lower.includes("بطئ") ||
-  lower.includes("بطيء") ||
-  lower.includes("ضعيف") ||
-  lower.includes("مقطوع") ||
-  lower.includes("ما في") ||
-  lower.includes("مافي") ||
-  lower.includes("انترنت") ||
-  lower.includes("نت")
-) {
-  await sendWhatsAppMessage(
-    from,
-    "تمام، المشكلة وصلت. فيك تقلي من أي ساعة بلشت؟ وهل اللمبة بالراوتر شغالة؟"
-  );
-  return res.sendStatus(200);
-}
+    // ❌ تجاهل رسائل البوت نفسه
+    if (msg.fromMe === true) {
+      console.log("IGNORED: fromMe");
+      return res.sendStatus(200);
+    }
 
-if (
-  lower === "شو بعمل" ||
-  lower === "كيف" ||
-  lower === "؟" ||
-  lower === "فيك توضح"
-) {
-  await sendWhatsAppMessage(
-    from,
-    "خبرني أكتر عن المشكلة: بطء، انقطاع، أو ما في اتصال نهائي؟"
-  );
-  return res.sendStatus(200);
-}
-
-
-    console.log("TEXT:", text);
-
-    // === فلترة الرسائل الغامضة ===
-    const vagueMessages = [
-      "مرحبا",
-      "أهلا",
-      "نعم",
-      "شو",
-      "كيف",
-      "فيك توضح",
-      "وضح",
-      "؟",
-      "شو في",
-    ];
-
-    if (text.length < 6 || vagueMessages.includes(text)) {
+    // ❌ تجاهل غير النص
+    if (msg.type !== "chat") {
       await sendWhatsAppMessage(
-        from,
-        "أكيد. خبرني شو المشكلة بالضبط؟ بطء، انقطاع، اشتراك، أو فاتورة."
+        msg.from,
+        "حالياً بدعم الرسائل النصية فقط 🙏"
       );
       return res.sendStatus(200);
     }
 
-    // === ذكاء اصطناعي ===
-    const aiReply = await askOpenAI(
-      `المستخدم عم يسأل عن مشكلة إنترنت. سؤاله: ${text}`
-    );
+    const text = (msg.body || "").trim();
+    if (!text) {
+      console.log("EMPTY MESSAGE");
+      return res.sendStatus(200);
+    }
 
-    await sendWhatsAppMessage(from, aiReply);
-    res.sendStatus(200);
+    console.log("FROM:", msg.from);
+    console.log("TEXT:", text);
+
+    const aiReply = await askOpenAI(text);
+
+    console.log("AI REPLY:", aiReply);
+
+    await sendWhatsAppMessage(msg.from, aiReply);
+
+    return res.sendStatus(200);
   } catch (err) {
-    console.error("ERROR:", err);
-    res.sendStatus(200);
+    console.error("WEBHOOK ERROR:", err);
+    return res.sendStatus(200);
   }
 });
 
-// ========== HEALTH ==========
+// ================== HEALTH ==================
 app.get("/", (req, res) => {
-  res.send("Webhook running");
+  res.send("WhatsApp AI Bot is running");
 });
 
-// ========== START ==========
+// ================== START ==================
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
   console.log("Server running on port", PORT);
